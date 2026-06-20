@@ -2,7 +2,12 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EFEEE9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Team Building TR">
 <title>Team Building TR</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,14 +19,17 @@
     --line:#E5E2D9; --accent:#ED7D17; --accent2:#cf6a0c;
   }
   *{margin:0;padding:0;box-sizing:border-box}
-  body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;min-height:100vh}
+  html{background:var(--bg)}
+  body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
   h1,h2,h3{font-family:'Archivo',sans-serif;letter-spacing:-.02em}
   .mono{font-family:'IBM Plex Mono',monospace}
-  /* role switch */
-  .switch{position:sticky;top:0;z-index:50;display:flex;justify-content:center;padding:14px;background:var(--bg)}
-  .switch .pill{display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:0 6px 20px -12px rgba(0,0,0,.3)}
-  .switch .pill button{border:0;background:none;padding:9px 18px;border-radius:999px;font:600 14px 'IBM Plex Sans';color:var(--muted);cursor:pointer}
-  .switch .pill button.on{background:var(--accent);color:#fff}
+  /* top bar with logo + role switch */
+  .topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:14px;
+    padding:calc(env(safe-area-inset-top) + 12px) 18px 12px;background:var(--bg);border-bottom:1px solid var(--line)}
+  .topbar .brand{height:32px;width:auto;display:block;flex:0 0 auto}
+  .topbar .pill{display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:0 6px 20px -12px rgba(0,0,0,.3)}
+  .topbar .pill button{border:0;background:none;padding:9px 18px;border-radius:999px;font:600 14px 'IBM Plex Sans';color:var(--muted);cursor:pointer}
+  .topbar .pill button.on{background:var(--accent);color:#fff}
   /* phone */
   .stage{display:flex;justify-content:center;padding:6px 14px 56px}
   .phone{width:392px;max-width:100%;border-radius:46px;background:#0E0E0D;padding:12px;box-shadow:0 50px 110px -40px rgba(0,0,0,.55)}
@@ -31,7 +39,7 @@
   .kicker{font-family:'IBM Plex Mono';font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:600}
   .muted{color:var(--muted)}
   label.fld{display:block;font:600 13px 'IBM Plex Sans';margin:14px 0 6px}
-  input,textarea,select{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font:15px 'IBM Plex Sans';color:var(--ink)}
+  input,textarea,select{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font:16px 'IBM Plex Sans';color:var(--ink)}
   textarea{min-height:70px;resize:vertical}
   .btn{display:block;width:100%;text-align:center;padding:15px;border:0;border-radius:14px;font:600 16px 'IBM Plex Sans';cursor:pointer;background:var(--accent);color:#fff;box-shadow:0 12px 26px -14px var(--accent)}
   .btn:disabled{opacity:.6;cursor:default}
@@ -60,10 +68,56 @@
   .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
   .row > div{flex:1;min-width:140px}
   .center{min-height:60vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
+
+  /* in-app logo */
+  .brandrow{display:flex;justify-content:center;margin-top:6px}
+  .brand-inline{height:40px;width:auto;display:block}
+
+  /* seasonal hero */
+  .season{position:relative;overflow:hidden;border-radius:22px;margin-top:14px;color:var(--sink);
+    background:var(--grad);min-height:178px;box-shadow:0 18px 44px -24px rgba(0,0,0,.45)}
+  .season-body{position:relative;z-index:2;padding:20px 18px 22px}
+  .season-badge{display:inline-flex;align-items:center;gap:6px;font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.16em;
+    text-transform:uppercase;background:rgba(255,255,255,.55);padding:5px 11px;border-radius:999px;backdrop-filter:blur(4px)}
+  .season-title{font-family:'Archivo';font-weight:800;font-size:26px;line-height:1.05;margin-top:12px;letter-spacing:-.02em}
+  .season-when{font:600 13px 'IBM Plex Mono',monospace;margin-top:8px;opacity:.82}
+  .season-sub{font-size:13.5px;margin-top:10px;max-width:30ch;line-height:1.4;opacity:.92}
+  .season-particles{position:absolute;inset:0;z-index:1;pointer-events:none}
+  .flake{position:absolute;top:-14%;will-change:transform,opacity;opacity:.9;line-height:1;
+    animation-name:fall;animation-timing-function:linear;animation-iteration-count:infinite}
+  @keyframes fall{
+    0%{transform:translate3d(0,-24px,0) rotate(0deg);opacity:0}
+    12%{opacity:.95}
+    100%{transform:translate3d(var(--drift,0px),210px,0) rotate(300deg);opacity:.12}
+  }
+  /* summer: gentle float instead of fall */
+  .season-summer .flake{animation-name:floaty;opacity:.85}
+  @keyframes floaty{
+    0%{transform:translate3d(0,8px,0) scale(.9);opacity:.2}
+    50%{transform:translate3d(var(--drift,0px),-10px,0) scale(1.05);opacity:.9}
+    100%{transform:translate3d(0,8px,0) scale(.9);opacity:.2}
+  }
+  @media (prefers-reduced-motion:reduce){ .flake{display:none} }
+
+  /* ===== MOBILE: full-screen app, no black frame ===== */
+  @media (max-width:600px){
+    .topbar{justify-content:center;flex-wrap:wrap;gap:10px;padding:calc(env(safe-area-inset-top) + 8px) 14px 8px}
+    .topbar .brand{height:28px}
+    .topbar .pill button{padding:8px 14px;font-size:13px}
+    .stage{padding:0}
+    .phone{width:100%;max-width:none;border-radius:0;background:transparent;padding:0;box-shadow:none}
+    .screen-wrap{border-radius:0;height:auto;min-height:0;overflow:visible;background:transparent}
+    .screen{position:static;inset:auto;overflow:visible;padding:16px 18px calc(env(safe-area-inset-bottom) + 30px)}
+    .statusbar{display:none}
+    .brand-inline{height:36px}
+    .hr{padding:0 14px calc(env(safe-area-inset-bottom) + 40px)}
+    .card{overflow-x:auto}
+  }
 </style>
 </head>
 <body>
-<div class="switch">
+<div class="topbar">
+  <img class="brand" id="brandImg" alt="TR Industrial">
   <div class="pill">
     <button data-act="role" data-arg="employee" id="roleEmp">App dipendente</button>
     <button data-act="role" data-arg="hr" id="roleHr">Console HR</button>
@@ -79,6 +133,51 @@ const SUPABASE_KEY = "sb_publishable_80LAqL_JuyMXB-6pU3r_yg_pNWclf25";
 const SB = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DIET = ["Vegetariano","Vegano","Senza glutine","Senza lattosio","Halal","Allergie (vedi note)"];
+
+// ====== LOGO (inline) ======
+const LOGO = "data:image/png;base64,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";
+
+// ====== Animazione stagionale (in base alla data dell'evento) ======
+function seasonInfo(dateStr){
+  let m = null;
+  if(dateStr){ const d = new Date(dateStr); if(!isNaN(d)) m = d.getMonth()+1; }
+  if(m==null) m = (new Date()).getMonth()+1;
+  let key;
+  if(m===12 || m<=2) key='winter';
+  else if(m<=5) key='spring';
+  else if(m<=8) key='summer';
+  else key='autumn';
+  const S = {
+    winter:{label:'Inverno', emoji:['❄️','❅','❄','✦','❉'], grad:'linear-gradient(160deg,#e3edf5,#b6cfe4 55%,#93b4d4)', ink:'#143553', sub:'Aria frizzante e atmosfera di festa.'},
+    spring:{label:'Primavera', emoji:['🌸','🌼','🌷','✿','❀'], grad:'linear-gradient(160deg,#ffe6f0,#ffd6c4 55%,#ffe7a6)', ink:'#7a2d4d', sub:'Tutto rifiorisce, come la voglia di stare insieme.'},
+    summer:{label:'Estate', emoji:['☀️','🌻','🌴','✺','❂'], grad:'linear-gradient(160deg,#ffe8a3,#ffc25a 52%,#ff9d3d)', ink:'#7a3b00', sub:'Sole, serata lunga e buona compagnia.'},
+    autumn:{label:'Autunno', emoji:['🍂','🍁','🌰','❧','✶'], grad:'linear-gradient(160deg,#ffdca6,#f0a45a 52%,#cf6a0c)', ink:'#5e2a0c', sub:'Foglie che cadono e calore di gruppo.'}
+  };
+  return Object.assign({key}, S[key]);
+}
+function seasonHero(){
+  const s = seasonInfo(state.event?.event_date);
+  let parts='';
+  for(let i=0;i<16;i++){
+    const left  = Math.round(Math.random()*100);
+    const dur   = (6 + Math.random()*7).toFixed(2);
+    const delay = (-Math.random()*10).toFixed(2);
+    const size  = Math.round(14 + Math.random()*16);
+    const drift = Math.round(Math.random()*44 - 22);
+    const e = s.emoji[i % s.emoji.length];
+    parts += `<span class="flake" style="left:${left}%;font-size:${size}px;animation-duration:${dur}s;animation-delay:${delay}s;--drift:${drift}px">${e}</span>`;
+  }
+  const when = (esc(state.event?.event_date||'')+' '+esc(state.event?.event_time||'')).trim();
+  return `<div class="season season-${s.key}" style="--grad:${s.grad};--sink:${s.ink}">
+    <div class="season-particles">${parts}</div>
+    <div class="season-body">
+      <div class="season-badge">${s.label} ${s.emoji[0]}</div>
+      <div class="season-title">${esc(state.event?.name||'Evento aziendale')}</div>
+      ${when?`<div class="season-when">${when}</div>`:''}
+      <div class="season-sub">${s.sub}</div>
+    </div>
+  </div>`;
+}
 
 const state = {
   role: "employee",
@@ -216,7 +315,8 @@ async function createEvent(){
 function statusBar(){ return '<div class="statusbar"><span>9:41</span><span class="mono">5G</span></div>'; }
 function empWelcome(){
   return statusBar()+`
-    <div style="margin-top:40px">
+    <div class="brandrow" style="margin-top:18px"><img class="brand-inline" src="${LOGO}" alt="TR Industrial"></div>
+    <div style="margin-top:34px">
       <div class="kicker">Teambuilding 2026</div>
       <h1 style="font-size:40px;margin-top:10px">${esc(state.event?.name||'Evento aziendale')}</h1>
       <p class="muted" style="margin-top:14px;font-size:15px;line-height:1.5">Iscrizione, info e ricordi dell'evento, tutto in un posto.</p>
@@ -247,17 +347,18 @@ function empLogin(){
 function empHome(){
   const name=(state.profile?.full_name||'').split(' ')[0]||'';
   if(!state.event){
-    return statusBar()+`<h2 style="font-size:24px;margin-top:10px">Ciao ${esc(name)}</h2>
+    return statusBar()+`<div class="brandrow" style="margin-top:8px"><img class="brand-inline" src="${LOGO}" alt="TR Industrial"></div>
+      <h2 style="font-size:24px;margin-top:18px">Ciao ${esc(name)}</h2>
       <div class="card"><b>Nessun evento al momento.</b><p class="muted" style="margin-top:6px">L'HR non ha ancora pubblicato un evento.</p></div>
       <div style="margin-top:18px"><button class="btn ghost" data-act="logout">Esci</button></div>`;
   }
   const reg=state.myReg;
   return statusBar()+`
-    <h2 style="font-size:24px;margin-top:6px">Ciao ${esc(name)} 👋</h2>
+    <h2 style="font-size:22px;margin-top:4px">Ciao ${esc(name)} 👋</h2>
+    ${seasonHero()}
     <div class="card">
       <div class="kicker">Prossimo evento</div>
-      <h3 style="font-size:22px;margin-top:8px">${esc(state.event.name)}</h3>
-      <p class="muted" style="margin-top:6px">${esc(state.event.event_date||'')} ${esc(state.event.event_time||'')}<br>${esc(state.event.place||'')}</p>
+      <p class="muted" style="margin-top:8px">📅 ${esc(state.event.event_date||'')} ${esc(state.event.event_time||'')}<br>📍 ${esc(state.event.place||'—')}</p>
       ${reg? '<div style="margin-top:12px"><span class="tag">Sei iscritto ✓</span></div>' : ''}
       <div style="margin-top:16px"><button class="btn" data-act="go" data-arg="event">${reg?'Vedi il tuo evento':'Iscriviti'}</button></div>
     </div>
@@ -477,6 +578,7 @@ document.addEventListener('click', async (ev)=>{
 
 // ---------- boot ----------
 (async function(){
+  document.getElementById('brandImg').src = LOGO;
   try{
     await loadSession();
     await refreshAll();
