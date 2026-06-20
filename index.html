@@ -99,6 +99,16 @@
   }
   @media (prefers-reduced-motion:reduce){ .flake{display:none} }
 
+  /* media gallery */
+  .media-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .media-cell{position:relative}
+  .media-item{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:12px;background:var(--s2);border:1px solid var(--line)}
+  .media-actions{position:absolute;top:6px;right:6px;display:flex;gap:6px}
+  .mini{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;border:0;
+    background:rgba(14,14,13,.6);color:#fff;font-size:14px;line-height:1;cursor:pointer;text-decoration:none;backdrop-filter:blur(3px)}
+  .mini.danger{background:rgba(178,40,40,.85)}
+  .btn.ghost.danger{color:#b22828;border-color:#e6bcbc}
+
   /* ===== MOBILE: full-screen app, no black frame ===== */
   @media (max-width:600px){
     .topbar{justify-content:center;flex-wrap:wrap;gap:10px;padding:calc(env(safe-area-inset-top) + 8px) 14px 8px}
@@ -183,8 +193,14 @@ const state = {
   role: "employee",
   session: null, profile: null, event: null, myReg: null, mySurvey: null,
   emp: "welcome", hrTab: "overview", hr: {}, busy: false,
+  media: [], mediaLoading: false, uploading: false,
   diet: [], dietNotes: "", survey: {org:0,location:0,food:0,fun:0,comment:""}
 };
+
+// Nome del bucket Storage su Supabase (crealo dalla dashboard, vedi istruzioni)
+const MEDIA_BUCKET = "event-media";
+const VIDEO_EXT = ["mp4","mov","webm","m4v","3gp","avi","mkv","ogv"];
+function isVideoName(n){ return VIDEO_EXT.includes((n.split('.').pop()||'').toLowerCase()); }
 
 function toast(m){ const t=document.getElementById('toast'); t.innerHTML='<div class="toast">'+esc(m)+'</div>'; setTimeout(()=>{t.innerHTML='';},2600); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -265,10 +281,70 @@ async function saveDietary(){
   if(error){ toast(error.message); render(); return; }
   await loadMine(); state.emp='confirm'; render();
 }
-async function addPhoto(){
-  const n=(state.myReg?.photos_count||0)+1;
-  await SB.from('registrations').upsert({ user_id:state.session.user.id, event_id:state.event.id, photos_count:n },{onConflict:'user_id,event_id'});
-  await loadMine(); render();
+// Cartella per-utente: ${event_id}/${user_id}/file  → isola i caricamenti per dipendente
+async function loadMyMedia(){
+  state.media=[];
+  if(!state.session || !state.event) return;
+  const folder = state.event.id + '/' + state.session.user.id;
+  const { data, error } = await SB.storage.from(MEDIA_BUCKET)
+    .list(folder, { limit:300, sortBy:{ column:'created_at', order:'desc' } });
+  if(error){ console.error('list mine', error); return; }
+  const files = (data||[]).filter(f => f && f.name && f.name !== '.emptyFolderPlaceholder');
+  if(!files.length) return;
+  const paths = files.map(f => folder + '/' + f.name);
+  const { data:signed, error:e2 } = await SB.storage.from(MEDIA_BUCKET).createSignedUrls(paths, 3600);
+  if(e2){ console.error('sign', e2); return; }
+  state.media = (signed||[]).map((s,i)=>({ url:s.signedUrl, name:files[i].name, path:paths[i] }));
+}
+// HR: tutti i contenuti dell'evento (gira nelle sottocartelle dei dipendenti)
+async function loadAllMedia(){
+  state.media=[];
+  if(!state.event) return;
+  const root = String(state.event.id);
+  const { data:dirs, error } = await SB.storage.from(MEDIA_BUCKET).list(root, { limit:1000 });
+  if(error){ console.error('list root', error); return; }
+  let paths=[];
+  for(const d of (dirs||[])){
+    if(!d || d.name==='.emptyFolderPlaceholder') continue;
+    if(d.id===null){ // sottocartella utente
+      const { data:files } = await SB.storage.from(MEDIA_BUCKET)
+        .list(root+'/'+d.name, { limit:1000, sortBy:{ column:'created_at', order:'desc' } });
+      (files||[]).forEach(f=>{ if(f.name!=='.emptyFolderPlaceholder') paths.push(root+'/'+d.name+'/'+f.name); });
+    } else {
+      paths.push(root+'/'+d.name); // eventuale file diretto
+    }
+  }
+  if(!paths.length) return;
+  const { data:signed, error:e2 } = await SB.storage.from(MEDIA_BUCKET).createSignedUrls(paths, 3600);
+  if(e2){ console.error('sign all', e2); return; }
+  state.media = (signed||[]).map((s,i)=>({ url:s.signedUrl, path:paths[i], name:paths[i].split('/').pop() }));
+}
+async function uploadMedia(files){
+  files = Array.from(files||[]);
+  if(!files.length) return;
+  if(!state.session){ toast('Accedi per caricare'); return; }
+  if(!state.event){ toast('Nessun evento attivo'); return; }
+  state.uploading=true; render();
+  let ok=0, fail=0;
+  for(const file of files){
+    const safe = file.name.replace(/[^\w.\-]/g,'_');
+    const path = `${state.event.id}/${state.session.user.id}/${Date.now()}-${safe}`;
+    const { error } = await SB.storage.from(MEDIA_BUCKET)
+      .upload(path, file, { contentType:file.type||undefined, upsert:false });
+    if(error){ fail++; console.error('upload', error); } else ok++;
+  }
+  state.uploading=false;
+  if(ok) toast(ok+' file caricati'+(fail?(' • '+fail+' non riusciti'):''));
+  else toast('Caricamento non riuscito (controlla il bucket "'+MEDIA_BUCKET+'")');
+  await loadMyMedia(); render();
+}
+async function deleteMedia(path){
+  if(!path) return;
+  if(!confirm('Eliminare definitivamente questo file?')) return;
+  const { error } = await SB.storage.from(MEDIA_BUCKET).remove([path]);
+  if(error){ toast(error.message); return; }
+  toast('File eliminato');
+  await loadAllMedia(); render();
 }
 async function saveSurvey(){
   state.survey.comment = val('svComment');
@@ -309,6 +385,31 @@ async function createEvent(){
   state.busy=false;
   if(error){ toast(error.message); render(); return; }
   await loadEvent(); await loadHR(); state.hrTab='overview'; toast('Evento creato!'); render();
+}
+async function updateEvent(){
+  if(!state.event){ toast('Nessun evento da modificare'); return; }
+  const name=val('eName'); if(!name){ toast('Dai un nome all\u2019evento'); return; }
+  const ev={ name, event_date:val('eDate')||null, event_time:val('eTime')||null,
+    place:val('ePlace')||null, capacity: val('eCap')?parseInt(val('eCap')):null, description:val('eDesc')||null };
+  state.busy=true; render();
+  const { error } = await SB.from('events').update(ev).eq('id', state.event.id);
+  state.busy=false;
+  if(error){ toast(error.message); render(); return; }
+  await loadEvent(); await loadHR(); state.hrTab='overview'; toast('Evento aggiornato!'); render();
+}
+async function deleteEvent(){
+  if(!state.event){ toast('Nessun evento attivo'); return; }
+  const ev=state.event;
+  if(!confirm('Eliminare l\u2019evento "'+ev.name+'"?\nVerranno rimossi anche iscrizioni, sondaggi e inviti collegati. L\u2019operazione non \u00e8 reversibile.')) return;
+  state.busy=true; render();
+  // rimuovo prima i dati collegati (se non c'\u00e8 cascade sul DB)
+  await SB.from('registrations').delete().eq('event_id', ev.id);
+  await SB.from('survey_responses').delete().eq('event_id', ev.id);
+  await SB.from('invites').delete().eq('event_id', ev.id);
+  const { error } = await SB.from('events').delete().eq('id', ev.id);
+  state.busy=false;
+  if(error){ toast('Errore: '+error.message); render(); return; }
+  state.media=[]; await loadEvent(); await loadHR(); state.hrTab='overview'; toast('Evento eliminato'); render();
 }
 
 // ---------- render: employee ----------
@@ -367,7 +468,7 @@ function empHome(){
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
         <button class="btn ghost" data-act="go" data-arg="dietary">Preferenze alimentari</button>
         <button class="btn ghost" data-act="go" data-arg="info">Info finali</button>
-        <button class="btn ghost" data-act="go" data-arg="photos">Foto dell'evento (${reg.photos_count||0})</button>
+        <button class="btn ghost" data-act="go" data-arg="photos">Carica foto e video</button>
         <button class="btn ghost" data-act="go" data-arg="survey">Sondaggio finale</button>
       </div></div>`:''}
     <div style="margin-top:18px"><button class="btn ghost" data-act="logout">Esci</button></div>`;
@@ -407,16 +508,24 @@ function empInfo(){
     <div class="card"><b>Dove</b><p class="muted" style="margin-top:4px">${esc(e.place||'—')}</p></div>
     <div class="card"><b>Dettagli</b><p class="muted" style="margin-top:4px;line-height:1.5">${esc(e.description||'—')}</p></div>`;
 }
+function mediaTile(m){
+  return isVideoName(m.name)
+    ? `<video class="media-item" src="${m.url}" controls playsinline preload="metadata"></video>`
+    : `<a class="media-item" href="${m.url}" target="_blank" rel="noopener"><img src="${m.url}" loading="lazy" alt=""></a>`;
+}
 function empPhotos(){
-  const n=state.myReg?.photos_count||0;
+  const media=state.media||[];
+  let grid;
+  if(state.mediaLoading) grid=`<p class="muted" style="margin-top:14px">Carico…</p>`;
+  else if(media.length) grid=`<div class="media-grid" style="margin-top:14px">${media.map(mediaTile).join('')}</div>`;
+  else grid=`<p class="muted" style="margin-top:14px;font-size:14px">Non hai ancora caricato nulla.</p>`;
   return statusBar()+`<span class="back" data-act="go" data-arg="home">&lsaquo;</span>
-    <h2 style="font-size:24px;margin-top:8px">Foto dell'evento</h2>
-    <div class="card" style="text-align:center">
-      <div style="font-family:Archivo;font-weight:800;font-size:48px;color:var(--accent)">${n}</div>
-      <p class="muted">foto caricate</p>
-      <div style="margin-top:14px"><button class="btn" data-act="addPhoto">+ Carica una foto</button></div>
-    </div>
-    <p class="muted" style="margin-top:10px;font-size:13px">Nota: in questa versione le foto sono simulate (conteggio). Possiamo aggiungere il caricamento reale come passo successivo.</p>`;
+    <h2 style="font-size:24px;margin-top:8px">Carica foto e video</h2>
+    <p class="muted" style="margin-top:6px;font-size:14px;line-height:1.45">Condividi i ricordi dell'evento. I contenuti sono <b>privati</b>: li vede solo l'organizzazione, che sceglierà cosa utilizzare o ricondividere.</p>
+    <input type="file" id="mediaInput" accept="image/*,video/*" multiple style="display:none">
+    <div style="margin-top:16px"><button class="btn" data-act="pickMedia" ${state.uploading?'disabled':''}>${state.uploading?'Caricamento in corso…':'＋ Scegli dalla galleria'}</button></div>
+    <h3 style="margin-top:24px;font-size:16px">I tuoi caricamenti</h3>
+    ${grid}`;
 }
 function stars(key){
   let s='';
@@ -473,17 +582,24 @@ function renderHR(){
 where email = '${esc(state.session.user.email)}';</pre></div></div>`;
   }
   const tab=state.hrTab; const d=state.hr;
-  const tabs=['overview','participants','invites','results','newevent'];
-  const labels={overview:'Panoramica',participants:'Partecipanti',invites:'Inviti',results:'Risultati',newevent:'Nuovo evento'};
+  const tabs=['overview','participants','invites','results','media','newevent'];
+  const labels={overview:'Panoramica',participants:'Partecipanti',invites:'Inviti',results:'Risultati',media:'Foto/Video',newevent:'Nuovo evento'};
   let body='';
   if(tab==='overview') body=hrOverview(d);
   else if(tab==='participants') body=hrParticipants(d);
   else if(tab==='invites') body=hrInvites(d);
   else if(tab==='results') body=hrResults(d);
+  else if(tab==='media') body=hrMedia();
+  else if(tab==='editevent') body=hrEditEvent();
   else body=hrNewEvent();
+  const eventActions = state.event ? `<div class="row" style="gap:8px;margin:10px 0 2px">
+      <button class="btn sm ghost" data-act="hrtab" data-arg="editevent">✏️ Modifica evento</button>
+      <button class="btn sm ghost danger" data-act="deleteEvent" ${state.busy?'disabled':''}>🗑 Elimina evento</button>
+    </div>` : '';
   return `<div class="hr">
     <h2 style="margin:6px 0">Console HR</h2>
     <p class="muted">Evento attivo: ${esc(state.event?.name||'nessuno — creane uno')}</p>
+    ${eventActions}
     <div class="tabs">${tabs.map(t=>`<button class="${t===tab?'on':''}" data-act="hrtab" data-arg="${t}">${labels[t]}</button>`).join('')}</div>
     ${body}
   </div>`;
@@ -542,6 +658,39 @@ function hrNewEvent(){
     <div style="margin-top:16px"><button class="btn" data-act="createEvent" ${state.busy?'disabled':''}>${state.busy?'Attendi...':'Crea evento'}</button></div>
   </div>`;
 }
+function hrEditEvent(){
+  const e=state.event||{};
+  return `<div class="card" style="max-width:560px">
+    <b>Modifica evento</b>
+    <label class="fld">Nome</label><input id="eName" value="${esc(e.name||'')}">
+    <div class="row">
+      <div><label class="fld">Data</label><input id="eDate" type="date" value="${esc(e.event_date||'')}"></div>
+      <div><label class="fld">Orario</label><input id="eTime" value="${esc(e.event_time||'')}"></div>
+    </div>
+    <label class="fld">Luogo</label><input id="ePlace" value="${esc(e.place||'')}">
+    <label class="fld">Capienza</label><input id="eCap" type="number" value="${esc(e.capacity!=null?e.capacity:'')}">
+    <label class="fld">Descrizione</label><textarea id="eDesc">${esc(e.description||'')}</textarea>
+    <div class="row" style="margin-top:16px;gap:8px">
+      <button class="btn" data-act="updateEvent" ${state.busy?'disabled':''}>${state.busy?'Attendi...':'Salva modifiche'}</button>
+      <button class="btn ghost" data-act="hrtab" data-arg="overview">Annulla</button>
+    </div>
+  </div>`;
+}
+function hrMedia(){
+  const media=state.media||[];
+  if(state.mediaLoading) return `<div class="card muted">Carico i contenuti…</div>`;
+  if(!state.event) return `<div class="card"><b>Nessun evento attivo.</b></div>`;
+  if(!media.length) return `<div class="card"><b>Nessun contenuto caricato.</b>
+    <p class="muted" style="margin-top:6px">Le foto e i video caricati dai dipendenti compariranno qui. Sono visibili solo all'HR.</p></div>`;
+  return `<p class="muted" style="margin:8px 0">${media.length} contenuti caricati dai dipendenti. Tocca per ingrandire o scaricare; usa il cestino per rimuovere.</p>
+    <div class="media-grid">${media.map(m=>`<div class="media-cell">
+      ${mediaTile(m)}
+      <div class="media-actions">
+        <a class="mini" href="${m.url}" target="_blank" rel="noopener" title="Apri / scarica">⤢</a>
+        <button class="mini danger" data-act="delMedia" data-arg="${esc(m.path)}" title="Elimina">🗑</button>
+      </div>
+    </div>`).join('')}</div>`;
+}
 
 // ---------- main render ----------
 function render(){
@@ -560,20 +709,40 @@ document.addEventListener('click', async (ev)=>{
       if(arg==='hr'){ await loadProfile(); await loadHR(); }
       render(); return;
     }
-    if(act==='go'){ state.emp=arg; render(); return; }
+    if(act==='go'){
+      state.emp=arg;
+      if(arg==='photos'){ state.media=[]; state.mediaLoading=true; render(); await loadMyMedia(); state.mediaLoading=false; }
+      render(); return;
+    }
     if(act==='register'){ await doRegister(); return; }
     if(act==='login'){ await doLogin(); return; }
     if(act==='logout'){ await doLogout(); return; }
     if(act==='iscriviti'){ await iscriviti(); return; }
     if(act==='diet'){ const i=state.diet.indexOf(arg); if(i>=0)state.diet.splice(i,1); else state.diet.push(arg); render(); return; }
     if(act==='saveDietary'){ await saveDietary(); return; }
-    if(act==='addPhoto'){ await addPhoto(); return; }
+    if(act==='pickMedia'){ const i=document.getElementById('mediaInput'); if(i) i.click(); return; }
+    if(act==='delMedia'){ await deleteMedia(arg); return; }
     if(act==='rate'){ state.survey[arg]=parseInt(arg2); render(); return; }
     if(act==='saveSurvey'){ await saveSurvey(); return; }
-    if(act==='hrtab'){ state.hrTab=arg; if(!Object.keys(state.hr).length) await loadHR(); render(); return; }
+    if(act==='hrtab'){
+      state.hrTab=arg;
+      if(!Object.keys(state.hr).length) await loadHR();
+      if(arg==='media'){ state.media=[]; state.mediaLoading=true; render(); await loadAllMedia(); state.mediaLoading=false; }
+      render(); return;
+    }
     if(act==='addInvite'){ await addInvite(); return; }
     if(act==='createEvent'){ await createEvent(); return; }
+    if(act==='updateEvent'){ await updateEvent(); return; }
+    if(act==='deleteEvent'){ await deleteEvent(); return; }
   }catch(e){ toast('Errore: '+(e.message||e)); }
+});
+// upload da galleria (input file rigenerato a ogni render → delega su document)
+document.addEventListener('change', (ev)=>{
+  if(ev.target && ev.target.id==='mediaInput'){
+    const files=ev.target.files;
+    ev.target.value='';
+    uploadMedia(files);
+  }
 });
 
 // ---------- boot ----------
